@@ -5,106 +5,88 @@ import time
 
 st.set_page_config(layout="wide")
 
+# -----------------------
+# AUTO REFRESH (10 sec)
+# -----------------------
+st.markdown(
+    """
+    <script>
+    setTimeout(function(){
+        window.location.reload();
+    }, 10000);
+    </script>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("🥈 Silver ETF Master Dashboard")
 
-
-# ---------------- SAFE PRICE FUNCTION ----------------
-def last_price(ticker, period="1mo", interval="1d"):
-    try:
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
-        if df.empty:
-            return None, None
-        return df, float(df["Close"].iloc[-1])
-    except:
-        return None, None
+# -----------------------
+# FETCH DATA
+# -----------------------
+def safe_last(series):
+    if series is None or len(series) == 0:
+        return None
+    return float(series.iloc[-1])
 
 
-# ---------------- DAILY DATA (LOGIC) ----------------
-silver_df, silver_now = last_price("SI=F")
-usd_df, usd_now = last_price("INR=X")
+try:
+    etf_data = yf.download("TATASILVETF.NS", period="1d", interval="1m")
+    usd_data = yf.download("INR=X", period="1d", interval="1m")
+    silver_data = yf.download("SI=F", period="1d", interval="1m")
 
-c1, c2 = st.columns(2)
-c1.metric("Silver ($)", silver_now if silver_now else "No Data")
-c2.metric("USDINR", usd_now if usd_now else "No Data")
+    etf_now = safe_last(etf_data["Close"])
+    usd_now = safe_last(usd_data["Close"])
+    silver_now = safe_last(silver_data["Close"])
 
-st.write("---")
+except:
+    st.error("Data fetch failed. Market might be closed.")
+    st.stop()
 
+# -----------------------
+# FAIR VALUE LOGIC
+# -----------------------
+fair_value = silver_now * usd_now / 10
+deviation = ((etf_now - fair_value) / fair_value) * 100
 
-# ---------------- ETF LIST ----------------
-etfs = {
-    "Tata": "TATASILVETF.NS",
-    "HDFC": "HDFCSILVER.NS",
-    "Nippon": "SILVERBEES.NS"
-}
-
-
-rows = []
-
-for name, ticker in etfs.items():
-
-    df, price_now = last_price(ticker)
-
-    if df is None or silver_df is None:
-        continue
-
-    etf_prev = float(df["Close"].iloc[-2])
-    silver_prev = float(silver_df["Close"].iloc[-2])
-
-    silver_change = (silver_now - silver_prev) / silver_prev
-
-    expected = etf_prev * (1 + silver_change)
-    deviation = (price_now - expected) / expected * 100
-
-    if deviation <= -3:
-        signal = "BUY 🟢"
-    elif deviation >= 3:
-        signal = "SELL 🔴"
-    else:
-        signal = "HOLD ⚪"
-
-    rows.append([name, price_now, expected, deviation, signal])
-
-
-# ---------------- TABLE ----------------
-if rows:
-
-    table = pd.DataFrame(
-        rows,
-        columns=["ETF", "Current", "Expected", "Deviation %", "Signal"]
-    )
-
-    # highlight best opportunity
-    best = table["Deviation %"].abs().idxmax()
-    st.subheader("📊 Fair Value Comparison")
-
-    st.dataframe(
-        table.style.highlight_min(subset=["Deviation %"], color="lightgreen"),
-        use_container_width=True
-    )
-
+# -----------------------
+# SIGNAL
+# -----------------------
+if deviation <= -3:
+    signal = "🟢 BUY"
+elif deviation >= 3:
+    signal = "🔴 SELL"
 else:
-    st.warning("Data unavailable")
+    signal = "🟡 HOLD"
 
+# -----------------------
+# DYNAMIC CARDS
+# -----------------------
+c1, c2, c3, c4 = st.columns(4)
 
-# ---------------- INTRADAY CHART ----------------
-st.write("---")
-st.subheader("📈 Intraday Chart (5-min)")
+c1.metric("TATA ETF", round(etf_now, 2))
+c2.metric("COMEX Silver", round(silver_now, 2))
+c3.metric("USD/INR", round(usd_now, 2))
+c4.metric("Fair Value", round(fair_value, 2))
 
-selected = st.selectbox("Select ETF", list(etfs.keys()))
+st.markdown(f"## Signal: {signal} | Deviation: {round(deviation,2)}%")
 
-chart = yf.download(etfs[selected], period="1d", interval="5m", progress=False)
+# -----------------------
+# LIVE CHART
+# -----------------------
+chart_df = pd.DataFrame({
+    "ETF": etf_data["Close"],
+})
 
-if not chart.empty:
-    st.line_chart(chart["Close"])
-else:
-    st.info("Intraday data unavailable (market closed)")
+fair_line = (silver_data["Close"] * usd_data["Close"] / 10)
 
+chart_df["Fair Value"] = fair_line.values[:len(chart_df)]
 
-# ---------------- STATUS ----------------
-st.write("Last refresh:", pd.Timestamp.now())
+st.subheader("Live Price vs Fair Value")
+st.line_chart(chart_df)
 
-
-# ---------------- AUTO REFRESH ----------------
-time.sleep(20)
-st.rerun()
+# -----------------------
+# FOOTER
+# -----------------------
+st.caption("Auto refresh every 10 seconds • Built by Aditya's Silver Terminal 🚀")
 
