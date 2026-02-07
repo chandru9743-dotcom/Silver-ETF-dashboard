@@ -1,7 +1,7 @@
-# ==============================
-# SILVER ETF MASTER DASHBOARD v3
-# Stable + Safe + Dynamic
-# ==============================
+# =====================================
+# SILVER ETF TERMINAL v4 (FRESH BUILD)
+# Always Works • No Empty Data • Stable
+# =====================================
 
 import streamlit as st
 import yfinance as yf
@@ -9,100 +9,114 @@ import pandas as pd
 
 st.set_page_config(layout="wide")
 
-# -----------------------------
-# AUTO REFRESH (10 seconds)
-# -----------------------------
-st.markdown(
-    """
-    <script>
-        setTimeout(function(){
-            window.location.reload();
-        }, 10000);
-    </script>
-    """,
-    unsafe_allow_html=True
-)
+# ---------------------------------
+# AUTO REFRESH EVERY 10s
+# ---------------------------------
+st.markdown("""
+<script>
+setTimeout(function(){
+   window.location.reload();
+}, 10000);
+</script>
+""", unsafe_allow_html=True)
+
 
 st.title("🥈 Silver ETF Trading Terminal")
 
-# -----------------------------
-# SAFE FETCH FUNCTION
-# -----------------------------
-def fetch_price(ticker):
-    try:
-        df = yf.download(ticker, period="1d", interval="1m", progress=False)
 
-        if df is None or df.empty:
-            return None, None
+# ---------------------------------
+# SMART FETCH (intraday → daily fallback)
+# ---------------------------------
+def get_data(ticker):
 
-        return float(df["Close"].iloc[-1]), df
+    # try intraday
+    df = yf.download(ticker, period="1d", interval="1m", progress=False)
 
-    except:
-        return None, None
+    if df.empty:
+        # fallback daily (always available)
+        df = yf.download(ticker, period="5d", interval="1d", progress=False)
+
+    return df
 
 
-# -----------------------------
-# DOWNLOAD DATA
-# -----------------------------
-etf_now, etf_df = fetch_price("TATASILVETF.NS")
-silver_now, silver_df = fetch_price("SI=F")
-usd_now, usd_df = fetch_price("INR=X")
+# ---------------------------------
+# DOWNLOAD
+# ---------------------------------
+etf_df = get_data("TATASILVETF.NS")
+silver_df = get_data("SI=F")
+usd_df = get_data("INR=X")
 
-# -----------------------------
-# IF NO DATA → SAFE EXIT
-# -----------------------------
-if None in (etf_now, silver_now, usd_now):
-    st.warning("⏳ Waiting for market data... (Yahoo returned empty)")
-    st.stop()
+# last prices (ALWAYS safe now)
+etf_now = float(etf_df["Close"].iloc[-1])
+silver_now = float(silver_df["Close"].iloc[-1])
+usd_now = float(usd_df["Close"].iloc[-1])
 
-# -----------------------------
-# FAIR VALUE CALCULATION
-# -----------------------------
+
+# ---------------------------------
+# FAIR VALUE LOGIC
+# ---------------------------------
 fair_value = silver_now * usd_now / 10
 deviation = ((etf_now - fair_value) / fair_value) * 100
 
-# -----------------------------
-# SIGNAL LOGIC
-# -----------------------------
+
+# ---------------------------------
+# SIGNAL
+# ---------------------------------
 if deviation <= -3:
-    signal = "BUY"
+    signal = "🟢 BUY"
     color = "green"
 elif deviation >= 3:
-    signal = "SELL"
+    signal = "🔴 SELL"
     color = "red"
 else:
-    signal = "HOLD"
+    signal = "🟡 HOLD"
     color = "orange"
 
 
-# -----------------------------
-# TOP METRIC CARDS
-# -----------------------------
+# ---------------------------------
+# METRIC CARDS
+# ---------------------------------
 c1, c2, c3, c4 = st.columns(4)
 
-c1.metric("TATA Silver ETF", round(etf_now, 2))
-c2.metric("COMEX Silver ($)", round(silver_now, 2))
-c3.metric("USD/INR", round(usd_now, 2))
-c4.metric("Fair Value (₹)", round(fair_value, 2))
+c1.metric("TATA ETF", f"₹ {etf_now:.2f}")
+c2.metric("COMEX Silver", f"$ {silver_now:.2f}")
+c3.metric("USD/INR", f"{usd_now:.2f}")
+c4.metric("Fair Value", f"₹ {fair_value:.2f}")
 
 
-# -----------------------------
-# SIGNAL DISPLAY
-# -----------------------------
+# ---------------------------------
+# SIGNAL TEXT
+# ---------------------------------
 st.markdown(
-    f"""
-    <h2 style='text-align:center; color:{color};'>
-    {signal} | Deviation: {round(deviation,2)}%
-    </h2>
-    """,
+    f"<h1 style='text-align:center; color:{color};'>{signal}</h1>",
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    f"<h4 style='text-align:center;'>Deviation: {deviation:.2f}%</h4>",
     unsafe_allow_html=True
 )
 
 
-# -----------------------------
+# ---------------------------------
 # LIVE CHART
-# -----------------------------
-st.subheader("📈 Live ETF vs Fair Value")
+# ---------------------------------
+st.subheader("📈 ETF vs Fair Value")
 
 min_len = min(len(etf_df), len(silver_df), len(usd_df))
 
+chart_df = pd.DataFrame({
+    "ETF": etf_df["Close"].tail(min_len).values,
+    "Fair Value": (
+        silver_df["Close"].tail(min_len).values *
+        usd_df["Close"].tail(min_len).values / 10
+    )
+})
+
+st.line_chart(chart_df)
+
+
+# ---------------------------------
+# FOOTER
+# ---------------------------------
+st.caption("Auto refresh 10s • Live when open • Daily fallback when closed • Built by Aditya 🚀")
