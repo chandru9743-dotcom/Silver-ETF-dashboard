@@ -46,8 +46,13 @@ except:
 # -----------------------
 # FAIR VALUE LOGIC
 # -----------------------
+if None in (etf_now, usd_now, silver_now):
+    st.warning("Waiting for live market data...")
+    st.stop()
+
 fair_value = silver_now * usd_now / 10
 deviation = ((etf_now - fair_value) / fair_value) * 100
+
 
 # -----------------------
 # SIGNAL
@@ -89,4 +94,5 @@ st.line_chart(chart_df)
 # FOOTER
 # -----------------------
 st.caption("Auto refresh every 10 seconds • Built by Aditya's Silver Terminal 🚀")
+
 
