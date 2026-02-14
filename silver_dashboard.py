@@ -101,7 +101,7 @@ c1,c2,c3,c4 = st.columns(4)
 c1.metric("Tata Silver ETF", f"₹{etf_now:.2f}" if etf_now else "No data", f"{etf_chg:.2f}%")
 c2.metric("COMEX Silver", f"${comex_now:.2f}" if comex_now else "No data", f"{comex_chg:.2f}%")
 c3.metric("USD/INR", f"{usd_now:.2f}" if usd_now else "No data", f"{usd_chg:.2f}%")
-c4.metric("Time (IST | EST)", f"{ist:%H:%M:%S} | {est:%H:%M:%S}")
+c4.metric("Time (IST | EST)", f"{india:%H:%M:%S} | {est:%H:%M:%S}")
 
 st.divider()
 
@@ -167,5 +167,6 @@ if not etf_df.empty:
 # ======================================================
 
 st.caption("Auto refresh every 15s • Fair Value Model • Prediction Enabled")
+
 
 
