@@ -1,126 +1,86 @@
 # ======================================================
-# 🥈 SILVER QUANT TERMINAL — FINAL PRO VERSION
-# Stable • Dark • Auto Refresh • Alerts • Fair Value
+# 🥈 SILVER QUANT TERMINAL PRO+
+# Fair Value Line + Prediction Added
 # ======================================================
 
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from streamlit_autorefresh import st_autorefresh
 from plyer import notification
 
-# ======================================================
-# PAGE CONFIG
-# ======================================================
-
 st.set_page_config(layout="wide")
 
 # ======================================================
-# AUTO REFRESH (REAL — NO FLICKER)
+# AUTO REFRESH
 # ======================================================
 
-REFRESH_SECONDS = 15
-st_autorefresh(interval=REFRESH_SECONDS * 1000, key="refresh")
+st_autorefresh(interval=15000, key="refresh")
 
 # ======================================================
-# DARK THEME (PERMANENT + WHITE TEXT)
+# DARK THEME
 # ======================================================
 
 st.markdown("""
 <style>
-
 .stApp {
     background: linear-gradient(135deg,#0b0f14,#141e30,#1c2833);
 }
 
-/* force white text everywhere */
 html, body, [class*="css"], p, div, span, label {
     color: white !important;
 }
 
-/* metric cards */
 [data-testid="metric-container"] {
     background: rgba(255,255,255,0.06);
     border-radius: 14px;
     padding: 16px;
-    box-shadow: 0 0 16px rgba(0,0,0,0.7);
 }
 
-/* headings */
-h1, h2, h3 {
-    color: #00ffd5 !important;
-}
+h1,h2,h3 { color:#00ffd5 !important; }
 
-/* sidebar */
-section[data-testid="stSidebar"] {
-    background: #0e1117 !important;
-}
-section[data-testid="stSidebar"] * {
-    color: white !important;
-}
-
-/* =========================================
-   BIGGER % CHANGE (DELTA)
-========================================= */
-
+/* bigger % change */
 [data-testid="stMetricDelta"] {
-    font-size: 28px !important;
+    font-size: 26px !important;
     font-weight: 800 !important;
 }
-
-/* optional: slightly bigger price too */
-[data-testid="stMetricValue"] {
-    font-size: 26px !important;
-}
-
-
 </style>
 """, unsafe_allow_html=True)
 
-
 # ======================================================
-# DESKTOP ALERT FUNCTION
+# ALERT
 # ======================================================
 
-def send_alert(title, message):
+def alert(title,msg):
     try:
-        notification.notify(
-            title=title,
-            message=message,
-            timeout=5
-        )
+        notification.notify(title=title,message=msg,timeout=4)
     except:
         pass
 
-
 # ======================================================
-# SAFE FETCH FUNCTION
+# FETCH
 # ======================================================
 
 def fetch(ticker):
-    try:
-        df = yf.download(ticker, period="2mo", interval="1d", progress=False)
+    df = yf.download(ticker, period="3mo", interval="1d", progress=False)
 
-        if df.empty:
-            return None, 0, pd.DataFrame()
-
-        close = df["Close"].dropna()
-
-        price = float(close.iloc[-1])
-        prev = float(close.iloc[-2]) if len(close) > 1 else price
-        change = ((price - prev) / prev) * 100
-
-        return price, change, df
-
-    except:
+    if df.empty:
         return None, 0, pd.DataFrame()
+
+    close = df["Close"].dropna()
+
+    now = float(close.iloc[-1])
+    prev = float(close.iloc[-2]) if len(close)>1 else now
+    chg = ((now-prev)/prev)*100
+
+    return now, chg, df
 
 
 # ======================================================
-# FETCH DATA
+# DATA
 # ======================================================
 
 etf_now, etf_chg, etf_df = fetch("TATSILV.NS")
@@ -131,81 +91,80 @@ usd_now, usd_chg, usd_df = fetch("INR=X")
 # HEADER
 # ======================================================
 
-st.title("🥈 Silver Quant Trading Terminal")
+st.title("🥈 Silver Quant Trading Terminal PRO+")
 
-# ======================================================
-# TIME (IST + EST)
-# ======================================================
+india = datetime.now()
+est = datetime.now(pytz.timezone("US/Eastern"))
 
-india_time = datetime.now()
-est_time = datetime.now(pytz.timezone("US/Eastern"))
-
-# ======================================================
-# METRICS ROW
-# ======================================================
-
-c1, c2, c3, c4 = st.columns(4)
+c1,c2,c3,c4 = st.columns(4)
 
 c1.metric("Tata Silver ETF", f"₹{etf_now:.2f}" if etf_now else "No data", f"{etf_chg:.2f}%")
 c2.metric("COMEX Silver", f"${comex_now:.2f}" if comex_now else "No data", f"{comex_chg:.2f}%")
 c3.metric("USD/INR", f"{usd_now:.2f}" if usd_now else "No data", f"{usd_chg:.2f}%")
-c4.metric("Time (IST | EST)", f"{india_time.strftime('%H:%M:%S')} | {est_time.strftime('%H:%M:%S')}")
+c4.metric("Time (IST | EST)", f"{india:%H:%M:%S} | {est:%H:%M:%S}")
 
 st.divider()
 
 # ======================================================
-# REGRESSION FAIR VALUE MODEL
+# FAIR VALUE + PREDICTION
 # ======================================================
 
-if not etf_df.empty and not comex_df.empty and not usd_df.empty:
+if not etf_df.empty:
 
-    e = etf_df["Close"]
-    c = comex_df["Close"]
-    u = usd_df["Close"]
+    hist = pd.concat([
+        etf_df["Close"],
+        comex_df["Close"],
+        usd_df["Close"]
+    ], axis=1).dropna()
 
-    hist = pd.concat([e, c, u], axis=1).dropna()
-    hist.columns = ["ETF", "COMEX", "USD"]
+    hist.columns = ["ETF","COMEX","USD"]
 
-    if len(hist) > 5:
+    X = hist[["COMEX","USD"]].values
+    y = hist["ETF"].values
 
-        X = hist[["COMEX", "USD"]].values
-        y = hist["ETF"].values
+    A = np.column_stack([X, np.ones(len(X))])
+    a,b,c = np.linalg.lstsq(A,y,rcond=None)[0]
 
-        A = np.column_stack([X, np.ones(len(X))])
-        a, b, c0 = np.linalg.lstsq(A, y, rcond=None)[0]
+    # FAIR VALUE SERIES
+    hist["Fair"] = a*hist["COMEX"] + b*hist["USD"] + c
 
-        fair = a * comex_now + b * usd_now + c0
-        deviation = ((etf_now - fair) / fair) * 100
+    fair_now = a*comex_now + b*usd_now + c
+    deviation = ((etf_now-fair_now)/fair_now)*100
 
-        signal = "🟡 HOLD"
+    # PREDICTION (next day)
+    pred_price = fair_now
 
-        if deviation < -3:
-            signal = "🟢 BUY"
-            send_alert("BUY Signal 🚀", f"TATSILV undervalued\nDev {deviation:.2f}%")
+    signal="🟡 HOLD"
+    if deviation < -3:
+        signal="🟢 BUY"
+        alert("BUY Signal", f"Dev {deviation:.2f}%")
+    elif deviation > 3:
+        signal="🔴 SELL"
+        alert("SELL Signal", f"Dev {deviation:.2f}%")
 
-        elif deviation > 3:
-            signal = "🔴 SELL"
-            send_alert("SELL Signal ⚠", f"TATSILV overvalued\nDev {deviation:.2f}%")
+    c5,c6,c7 = st.columns(3)
 
-        c5, c6, c7 = st.columns(3)
+    c5.metric("Fair Price", f"₹{fair_now:.2f}")
+    c6.metric("Deviation", f"{deviation:.2f}%")
+    c7.metric("Next Day Estimate", f"₹{pred_price:.2f}")
 
-        c5.metric("Fair ETF Price", f"₹{fair:.2f}")
-        c6.metric("Deviation %", f"{deviation:.2f}%")
-        c7.metric("Signal", signal)
+    st.subheader(f"Signal → {signal}")
 
-        st.divider()
+    st.divider()
 
-        st.subheader("📈 2 Month Price Comparison")
-        st.line_chart(hist)
+    # ======================================================
+    # CHART WITH FAIR VALUE LINE
+    # ======================================================
 
-    else:
-        st.warning("Not enough historical data for regression")
+    chart = hist[["ETF","Fair","COMEX","USD"]]
 
-else:
-    st.warning("Market data temporarily unavailable")
+    st.subheader("📈 ETF vs Fair Value vs COMEX vs USDINR")
+    st.line_chart(chart)
+
 
 # ======================================================
 # FOOTER
 # ======================================================
 
-st.caption(f"Auto refresh every {REFRESH_SECONDS} seconds • Stable Dark Mode")
+st.caption("Auto refresh every 15s • Fair Value Model • Prediction Enabled")
+
