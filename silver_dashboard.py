@@ -166,7 +166,8 @@ if not etf_df.empty:
 # FOOTER
 # ======================================================
 
-st.caption("Auto refresh every 15s • Fair Value Model • Prediction Enabled")
+st.caption("Auto refresh every 5s • Fair Value Model • Prediction Enabled")
+
 
 
 
